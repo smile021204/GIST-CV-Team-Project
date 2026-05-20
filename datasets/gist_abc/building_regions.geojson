@@ -1,0 +1,107 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "building_id": "A",
+        "note": "Replace with real A building region polygon"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              126.0,
+              35.0
+            ],
+            [
+              126.00005,
+              35.0
+            ],
+            [
+              126.00005,
+              35.00005
+            ],
+            [
+              126.0,
+              35.00005
+            ],
+            [
+              126.0,
+              35.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "building_id": "B",
+        "note": "Replace with real B building region polygon"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              126.0001,
+              35.0001
+            ],
+            [
+              126.00015,
+              35.0001
+            ],
+            [
+              126.00015,
+              35.00015
+            ],
+            [
+              126.0001,
+              35.00015
+            ],
+            [
+              126.0001,
+              35.0001
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "building_id": "C",
+        "note": "Replace with real C building region polygon"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              126.0002,
+              35.0002
+            ],
+            [
+              126.00025,
+              35.0002
+            ],
+            [
+              126.00025,
+              35.00025
+            ],
+            [
+              126.0002,
+              35.00025
+            ],
+            [
+              126.0002,
+              35.0002
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}
