@@ -56,6 +56,7 @@ class MapillaryDataModule(pl.LightningDataModule):
         "data_dir": DATASETS_PATH / "MGL",
         "local_dir": None,
         "tiles_filename": "tiles.pkl",
+        "image_ext": ".jpg",
         "scenes": "???",
         "split": None,
         "loading": {
@@ -259,12 +260,27 @@ class MapillaryDataModule(pl.LightningDataModule):
                 k: {loc: set(ids) for loc, ids in split.items()}
                 for k, split in splits.items()
             }
+
+            def has_split_id(view_name, ids):
+                if view_name in ids:
+                    return True
+                stem = view_name.rsplit("_", 1)[0]
+                if stem in ids:
+                    return True
+                for candidate in (view_name, stem):
+                    try:
+                        if int(candidate) in ids:
+                            return True
+                    except ValueError:
+                        pass
+                return False
+
             self.splits = {}
             for k, split in splits.items():
                 self.splits[k] = [
                     n
                     for n in names
-                    if n[0] in split and int(n[-1].rsplit("_", 1)[0]) in split[n[0]]
+                    if n[0] in split and has_split_id(n[-1], split[n[0]])
                 ]
         else:
             raise ValueError(split_arg)
@@ -277,7 +293,7 @@ class MapillaryDataModule(pl.LightningDataModule):
             self.data[stage],
             self.image_dirs,
             self.tile_managers,
-            image_ext=".jpg",
+            image_ext=self.cfg.image_ext,
         )
 
     def dataloader(

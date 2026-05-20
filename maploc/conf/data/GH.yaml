@@ -1,0 +1,30 @@
+name: mapillary
+data_dir: datasets/GH
+scenes:
+  - gh
+split: splits_GH.json
+image_ext: ".JPG"
+loading:
+  train:
+    batch_size: 4
+    num_workers: 4
+  val:
+    batch_size: 4
+    num_workers: 4
+# map data
+num_classes:
+  areas: 7
+  ways: 10
+  nodes: 33
+pixel_per_meter: 2
+crop_size_meters: 64
+max_init_error: 48
+add_map_mask: true
+# preprocessing
+resize_image: 512
+pad_to_square: true
+rectify_pitch: true
+augmentation:
+  rot90: true
+  flip: true
+  image: {apply: true}

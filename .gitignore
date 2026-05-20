@@ -29,6 +29,7 @@ outputs/
 **/tiles_zoom_pixels.png
 
 # Raw datasets (drone JPGs etc. - too large for git)
+datasets/
 datasets/**/*.JPG
 datasets/**/*.jpg
 datasets/**/*.PNG
