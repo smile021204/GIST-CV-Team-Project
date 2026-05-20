@@ -1,4 +1,0 @@
-image_path,latitude,longitude,yaw,timestamp,building_id,split
-images/A/example_A_0001.jpg,35.000000,126.000000,90.0,2026:05:20 12:00:00,A,train
-images/B/example_B_0001.jpg,35.000100,126.000100,180.0,2026:05:20 12:10:00,B,val
-images/C/example_C_0001.jpg,35.000200,126.000200,270.0,2026:05:20 12:20:00,C,test
