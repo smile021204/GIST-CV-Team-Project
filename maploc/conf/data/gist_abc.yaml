@@ -1,0 +1,35 @@
+name: gist_abc
+data_dir: data_one
+image_dirname: dataset
+metadata_filename: metadata_full.csv
+intrinsics_filename: intrinsics.json
+tiles_filename: tiles.pkl
+scene: gist_abc
+split: splits_balanced.json
+loading:
+  train:
+    batch_size: 1
+    num_workers: 2
+  val:
+    batch_size: 1
+    num_workers: 2
+  test:
+    batch_size: 1
+    num_workers: 0
+# map data
+num_classes:
+  areas: 7
+  ways: 10
+  nodes: 33
+pixel_per_meter: 2
+crop_size_meters: 64
+max_init_error: 48
+add_map_mask: true
+# preprocessing
+resize_image: 512
+pad_to_square: true
+rectify_pitch: true
+augmentation:
+  rot90: true
+  flip: true
+  image: {apply: true}

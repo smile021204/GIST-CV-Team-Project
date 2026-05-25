@@ -24,15 +24,8 @@ outputs/
 **/area.osm.json
 **/tiles.pkl
 **/tiles_preview.*
-**/tiles_full_with_grid.png
-**/tiles_channel_*.png
-**/tiles_zoom_pixels.png
 
 # Raw datasets (drone JPGs etc. - too large for git)
-datasets/
-datasets/**/*.JPG
-datasets/**/*.jpg
-datasets/**/*.PNG
-datasets/**/*.png
-datasets/**/*.SRT
-datasets/**/images/
+data_one/
+data_one/**/*.SRT
+data_one/**/images/
