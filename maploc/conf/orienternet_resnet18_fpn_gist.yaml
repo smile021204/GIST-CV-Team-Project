@@ -1,0 +1,19 @@
+defaults:
+  - orienternet_resnet18_fpn
+  - _self_
+
+experiment:
+  gpus: 4
+
+data:
+  loading:
+    train:
+      batch_size: 4
+      num_workers: 8
+    val:
+      batch_size: 4
+      num_workers: 8
+
+training:
+  trainer:
+    precision: 16-mixed

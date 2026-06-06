@@ -34,6 +34,8 @@ class MapLocDataset(torchdata.Dataset):
         "init_from_gps": False,
         "return_gps": False,
         "force_camera_height": None,
+        "teacher_scores_dir": None,
+        "require_teacher_scores": False,
         # pose priors
         "add_map_mask": False,
         "mask_radius": None,
@@ -190,7 +192,7 @@ class MapLocDataset(torchdata.Dataset):
         if "chunk_index" in self.data:
             data["chunk_id"] = (scene, seq, self.data["chunk_index"][idx])
 
-        return {
+        sample = {
             **data,
             "image": image,
             "valid": valid,
@@ -202,6 +204,35 @@ class MapLocDataset(torchdata.Dataset):
             "roll_pitch_yaw": torch.tensor((roll, pitch, yaw)).float(),
             "pixels_per_meter": torch.tensor(canvas.ppm).float(),
         }
+        teacher_scores = self.load_teacher_scores(name)
+        if teacher_scores is not None:
+            sample["teacher_scores"] = teacher_scores
+        return sample
+
+    def load_teacher_scores(self, name):
+        if self.cfg.teacher_scores_dir is None:
+            return None
+
+        root = Path(self.cfg.teacher_scores_dir)
+        filename = Path(name).name
+        candidates = [
+            root / self.stage / f"{filename}.pt",
+            root / f"{filename}.pt",
+        ]
+        for path in candidates:
+            if not path.is_file():
+                continue
+            dump = torch.load(path, map_location="cpu", weights_only=False)
+            if isinstance(dump, dict):
+                dump = dump["scores"]
+            return dump.float()
+
+        if self.cfg.require_teacher_scores:
+            raise FileNotFoundError(
+                f"No teacher scores for {name}. Tried: "
+                + ", ".join(str(path) for path in candidates)
+            )
+        return None
 
     def process_image(self, image, cam, roll, pitch, seed):
         image = (
@@ -260,5 +291,7 @@ class MapLocDataset(torchdata.Dataset):
             canvas.to_uv(canvas.bbox.center)
             + np.array([[-1], [1]]) * (radius + self.cfg.mask_pad) * canvas.ppm
         ).astype(int)
+        mask_min = np.maximum(mask_min, 0)
+        mask_max = np.minimum(mask_max, canvas.raster.shape[-2:][::-1])
         map_mask[mask_min[1] : mask_max[1], mask_min[0] : mask_max[0]] = True
         return map_mask

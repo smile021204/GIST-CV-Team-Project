@@ -43,6 +43,12 @@ class OrienterNet(BaseModel):
         "do_label_smoothing": False,
         "sigma_xy": 1,
         "sigma_r": 2,
+        "distillation": {
+            "enabled": False,
+            "kd_weight": 1.0,
+            "gt_weight": 1.0,
+            "temperature": 2.0,
+        },
         # depcreated
         "depth_parameterization": "scale",
         "norm_depth_scores": False,
@@ -187,9 +193,39 @@ class OrienterNet(BaseModel):
         else:
             nll = nll_loss_xyr(pred["log_probs"], xy_gt, yaw_gt)
         loss = {"total": nll, "nll": nll}
+        if self.conf.distillation.enabled and "teacher_scores" in data:
+            kd = self.distillation_loss(pred["scores"], data["teacher_scores"])
+            loss["kd"] = kd
+            loss["total"] = (
+                self.conf.distillation.gt_weight * nll
+                + self.conf.distillation.kd_weight * kd
+            )
         if self.training and self.conf.add_temperature:
             loss["temperature"] = self.temperature.expand(len(nll))
         return loss
+
+    def distillation_loss(self, student_scores, teacher_scores):
+        if student_scores.shape != teacher_scores.shape:
+            raise ValueError(
+                "Teacher score shape does not match student score shape: "
+                f"{teacher_scores.shape} vs {student_scores.shape}"
+            )
+
+        temperature = self.conf.distillation.temperature
+        teacher_scores = teacher_scores.to(
+            device=student_scores.device, dtype=torch.float32, non_blocking=True
+        )
+        student_scores = student_scores.float()
+
+        teacher_log_probs = log_softmax_spatial(teacher_scores / temperature)
+        student_log_probs = log_softmax_spatial(student_scores / temperature)
+        teacher_probs = teacher_log_probs.exp()
+
+        teacher_log_probs = torch.nan_to_num(teacher_log_probs, neginf=0.0, posinf=0.0)
+        student_log_probs = torch.nan_to_num(student_log_probs, neginf=0.0, posinf=0.0)
+        kl = teacher_probs * (teacher_log_probs - student_log_probs)
+        kl = torch.nan_to_num(kl, nan=0.0, neginf=0.0, posinf=0.0)
+        return kl.sum(dim=(-1, -2, -3)) * temperature * temperature
 
     def metrics(self):
         return {
