@@ -162,17 +162,99 @@ def plot_example_single(
 
 
 def plot_example_sequential(
-    idx,
+    chunk_index,
     model,
-    pred,
-    data,
+    batches,
+    preds,
     results,
-    plot_bev=True,
+    aligner=None,
     out_dir=None,
-    fig_for_paper=False,
-    show_gps=False,
-    show_fused=False,
     show_dir_error=False,
     show_masked_prob=False,
+    **_,
 ):
-    return
+    """Per-frame viz for sequential eval.
+
+    Each frame produces one PDF with: input image, OSM map, likelihood overlay,
+    neural-map features. Poses drawn: GT (red), single-frame argmax (black),
+    sequence-refined (green).
+    """
+    def _cpu(x):
+        return x.detach().cpu() if torch.is_tensor(x) else x
+
+    for i, (batch, pred, res) in enumerate(zip(batches, preds, results)):
+        batch = {k: _cpu(v) for k, v in batch.items()}
+        pred = {k: _cpu(v) for k, v in pred.items()}
+        res = {k: _cpu(v) for k, v in res.items()}
+        scene = batch["scene"]
+        name = batch["name"]
+        rasters = batch["map"]
+        uv_gt = batch["uv"].numpy()
+        yaw_gt = batch["roll_pitch_yaw"][-1].numpy()
+        image = batch["image"].permute(1, 2, 0)
+        if "valid" in batch:
+            image = image.masked_fill(~batch["valid"].unsqueeze(-1), 0.3)
+
+        lp_uvt = pred["log_probs"]
+        if not show_masked_prob and "scores_unmasked" in pred:
+            lp_uvt = pred["scores_unmasked"]
+        has_rotation = lp_uvt.ndim == 3
+        lp_uv = lp_uvt.max(-1).values if has_rotation else lp_uvt
+        if lp_uv.min() > -np.inf:
+            lp_uv = lp_uv.clip(min=np.percentile(lp_uv, 1))
+        prob = lp_uv.exp()
+
+        uv_p, yaw_p = pred["uv_max"], pred.get("yaw_max")
+        uv_seq, yaw_seq = pred.get("uv_seq"), pred.get("yaw_seq")
+
+        text = (
+            rf'$\Delta xy_{{single}}$: {res["xy_max_error"]:.1f}m, '
+            rf'$\Delta\theta_{{single}}$: {res["yaw_max_error"]:.1f}°'
+        )
+        if "xy_seq_error" in res:
+            text += (
+                rf',  $\Delta xy_{{seq}}$: {res["xy_seq_error"]:.1f}m, '
+                rf'$\Delta\theta_{{seq}}$: {res["yaw_seq_error"]:.1f}°'
+            )
+        if show_dir_error and "directional_seq_error" in res:
+            err_lat, err_lon = res["directional_seq_error"]
+            text += rf",  lat/lon$_{{seq}}$={err_lat:.1f}/{err_lon:.1f}m"
+
+        map_viz = Colormap.apply(rasters)
+        overlay = likelihood_overlay(prob.numpy(), map_viz.mean(-1, keepdims=True))
+
+        plot_images(
+            [image, map_viz, overlay],
+            titles=[text, "map", "likelihood"],
+            dpi=75, cmaps="jet",
+        )
+        fig = plt.gcf()
+        axes = fig.axes
+        axes[1].images[0].set_interpolation("none")
+        axes[2].images[0].set_interpolation("none")
+        Colormap.add_colorbar()
+        plot_nodes(1, rasters[2])
+
+        # Poses: GT red, single-frame black, seq-refined green
+        plot_pose([1], uv_gt, yaw_gt, c="red")
+        plot_pose([1], uv_p, yaw_p, c="k")
+        if uv_seq is not None:
+            plot_pose([1], uv_seq, yaw_seq, c="lime")
+        plot_dense_rotations(2, lp_uvt.exp())
+
+        seq_err = float(res.get("xy_seq_error", res["xy_max_error"]))
+        inset_center = uv_seq if (uv_seq is not None and seq_err < 5) else uv_gt
+        axins = add_circle_inset(axes[2], inset_center)
+        axins.scatter(*uv_gt, lw=1, c="red", ec="k", s=50, zorder=15)
+
+        axes[0].text(
+            0.003, 0.003, f"chunk{chunk_index:03d}/{i:03d}  {scene}/{name}",
+            transform=axes[0].transAxes,
+            fontsize=3, va="bottom", ha="left", color="w",
+        )
+
+        if out_dir is not None:
+            name_ = str(name).replace("/", "_")
+            p = out_dir / f"chunk{chunk_index:03d}_frame{i:03d}_{name_}.pdf"
+            save_plot(str(p))
+        plt.close()
