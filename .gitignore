@@ -34,4 +34,7 @@ datasets/**/*.jpg
 datasets/**/*.PNG
 datasets/**/*.png
 datasets/**/*.SRT
+datasets/**/*.txt
+datasets/**/*.json
 datasets/**/images/
+datasets/**/checkpoints/
