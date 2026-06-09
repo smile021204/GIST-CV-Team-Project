@@ -56,6 +56,9 @@ All checkpoints can be downloaded from the folling link:
 
 https://drive.google.com/drive/folders/15GSNhh-Hpazm3ZIQmghaPYAP8Mm9UlBG?usp=sharing
 
+All data related files can be downloaded from the following link:
+
+https://drive.google.com/drive/folders/14hUNPoCRi6Ds2jaUAEEued9OcLpkBUVD?usp=sharing
 
 For Soft KD retraining, also provide teacher score volumes:
 
