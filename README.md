@@ -52,7 +52,8 @@ checkpoints/
     orienternet_mgl.ckpt
 ```
 
-All checkpoints can be downloaded from the below link
+All checkpoints can be downloaded from the folling link:
+
 https://drive.google.com/drive/folders/15GSNhh-Hpazm3ZIQmghaPYAP8Mm9UlBG?usp=sharing
 
 
