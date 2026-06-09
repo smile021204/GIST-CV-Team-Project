@@ -12,6 +12,10 @@ hydra-core
 pytorch-lightning
 torchmetrics
 jupyter
+gradio==4.44.1
+huggingface-hub<1.0
+imageio
+pydantic<2.11
 lxml
 rtree
 git+https://github.com/mapillary/OpenSfM

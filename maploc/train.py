@@ -1,5 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import os
 import os.path as osp
 from pathlib import Path
 from typing import Optional
@@ -63,7 +64,7 @@ class ConsoleLogger(pl.callbacks.Callback):
             **dict(module.losses_val.items()),
         }
         results = [f"{k} {v.compute():.3E}" for k, v in results.items()]
-        logger.info(f'[Validation] {{{", ".join(results)}}}')
+        logger.info(f"[Validation] {{{', '.join(results)}}}")
 
 
 def find_last_checkpoint_path(experiment_dir):
@@ -103,6 +104,7 @@ def prepare_experiment_dir(experiment_dir, cfg, rank):
 
 
 def train(cfg: DictConfig, job_id: Optional[int] = None):
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     torch.set_float32_matmul_precision("medium")
     OmegaConf.resolve(cfg)
     rank = rank_zero_only.rank
@@ -152,17 +154,32 @@ def train(cfg: DictConfig, job_id: Optional[int] = None):
     if cfg.experiment.gpus > 1:
         strategy = pl.strategies.DDPStrategy(find_unused_parameters=False)
         for split in ["train", "val"]:
-            cfg.data["loading"][split].batch_size = (
-                cfg.data["loading"][split].batch_size // cfg.experiment.gpus
+            global_batch_size = cfg.data["loading"][split].batch_size
+            cfg.data["loading"][split].batch_size = max(
+                1, global_batch_size // cfg.experiment.gpus
             )
             cfg.data["loading"][split].num_workers = int(
                 (cfg.data["loading"][split].num_workers + cfg.experiment.gpus - 1)
                 / cfg.experiment.gpus
             )
+            if rank == 0:
+                logger.info(
+                    "Using DDP %s batch size %d per GPU from requested global batch size %d.",
+                    split,
+                    cfg.data["loading"][split].batch_size,
+                    global_batch_size,
+                )
     data = data_modules[cfg.data.get("name", "mapillary")](cfg.data)
 
-    tb_args = {"name": cfg.experiment.name, "version": ""}
-    tb = pl.loggers.TensorBoardLogger(EXPERIMENTS_PATH, **tb_args)
+    logger_args = {"name": cfg.experiment.name, "version": ""}
+    try:
+        tb = pl.loggers.TensorBoardLogger(EXPERIMENTS_PATH, **logger_args)
+    except ModuleNotFoundError:
+        logger.warning(
+            "TensorBoard is not installed. Falling back to CSVLogger. "
+            "Install tensorboard to enable TensorBoard logs."
+        )
+        tb = pl.loggers.CSVLogger(EXPERIMENTS_PATH, **logger_args)
 
     callbacks = [
         checkpointing_epoch,
@@ -175,18 +192,22 @@ def train(cfg: DictConfig, job_id: Optional[int] = None):
     if cfg.experiment.gpus > 0:
         callbacks.append(pl.callbacks.DeviceStatsMonitor())
 
+    trainer_kwargs = {}
+    if strategy is not None:
+        trainer_kwargs["strategy"] = strategy
+
     trainer = pl.Trainer(
         default_root_dir=experiment_dir,
         detect_anomaly=False,
         enable_model_summary=False,
-        sync_batchnorm=True,
+        sync_batchnorm=cfg.experiment.gpus > 1,
         enable_checkpointing=True,
         logger=tb,
         callbacks=callbacks,
-        strategy=strategy,
         check_val_every_n_epoch=1,
         accelerator="gpu",
         num_nodes=1,
+        **trainer_kwargs,
         **cfg.training.trainer,
     )
     trainer.fit(model, data, ckpt_path=last_checkpoint_path)

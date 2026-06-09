@@ -1,0 +1,21 @@
+defaults:
+  - orienternet_resnet18_fpn_gist
+  - _self_
+
+experiment:
+  name: orienternet_resnet18_fpn_gist_4gpu_softkd
+
+data:
+  teacher_scores_dir: ../outputs/teacher_scores/orienternet_gist
+  require_teacher_scores: true
+
+model:
+  distillation:
+    enabled: true
+    gt_weight: 1.0
+    kd_weight: 0.5
+    temperature: 2.0
+
+training:
+  trainer:
+    max_epochs: 80

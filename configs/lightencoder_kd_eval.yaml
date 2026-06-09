@@ -1,0 +1,113 @@
+data:
+  name: gist
+  data_dir: datasets
+  image_root: datasets_full
+  metadata: metadata_full.csv
+  split: splits_balanced.json
+  tiles: tiles.pkl
+  intrinsics: intrinsics.json
+  target_csv: null
+  require_target: false
+  teacher_scores_dir: null
+  require_teacher_scores: false
+  scene: gist_abc
+  sequence: single
+  target_lat_col: target_lat
+  target_lon_col: target_lon
+  target_yaw_col: target_yaw
+  gps_lat_col: gps_lat
+  gps_lon_col: gps_lon
+  loading:
+    train:
+      batch_size: 8
+      num_workers: 16
+    val:
+      batch_size: 8
+      num_workers: 16
+    test:
+      batch_size: 1
+      num_workers: 0
+  num_classes:
+    areas: 7
+    ways: 10
+    nodes: 33
+  pixel_per_meter: 2
+  crop_size_meters: 64
+  max_init_error: 0
+  init_from_gps: true
+  add_map_mask: true
+  mask_radius: 64
+  resize_image: 512
+  pad_to_square: true
+  rectify_pitch: true
+  augmentation:
+    rot90: false
+    flip: false
+    image:
+      apply: false
+model:
+  image_encoder:
+    name: feature_extractor_v2
+    backbone:
+      encoder: resnet18
+      pretrained: true
+      output_dim: 128
+      num_downsample: null
+      remove_stride_from_first_conv: false
+  name: orienternet
+  latent_dim: 128
+  matching_dim: 8
+  z_max: 32
+  x_max: 32
+  pixel_per_meter: 2
+  num_scale_bins: 33
+  num_rotations: 64
+  map_encoder:
+    embedding_dim: 16
+    output_dim: 8
+    num_classes:
+      areas: 7
+      ways: 10
+      nodes: 33
+    backbone:
+      encoder: vgg19
+      pretrained: false
+      output_scales:
+      - 0
+      num_downsample: 3
+      decoder:
+      - 128
+      - 64
+      - 64
+      padding: replicate
+    unary_prior: false
+  bev_net:
+    num_blocks: 4
+    latent_dim: 128
+    output_dim: 8
+    confidence: true
+  distillation:
+    enabled: true
+    gt_weight: 1.0
+    kd_weight: 0.5
+    temperature: 2.0
+experiment:
+  name: orienternet_resnet18_fpn_gist_4gpu_softkd_b8
+  gpus: 4
+  seed: 0
+training:
+  lr: 0.0001
+  lr_scheduler: null
+  finetune_from_checkpoint: null
+  trainer:
+    val_check_interval: 50
+    log_every_n_steps: 100
+    limit_val_batches: 1000
+    max_steps: 500000
+    devices: 4
+    precision: 16-mixed
+    max_epochs: 80
+  checkpointing:
+    monitor: loss/total/val
+    save_top_k: 5
+    mode: min

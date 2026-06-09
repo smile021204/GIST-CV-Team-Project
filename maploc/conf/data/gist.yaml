@@ -1,0 +1,46 @@
+name: gist
+data_dir: datasets
+image_root: datasets_full
+metadata: metadata_full.csv
+split: splits_balanced.json
+tiles: tiles.pkl
+intrinsics: intrinsics.json
+target_csv: null
+require_target: false
+teacher_scores_dir: null
+require_teacher_scores: false
+scene: gist_abc
+sequence: single
+target_lat_col: target_lat
+target_lon_col: target_lon
+target_yaw_col: target_yaw
+gps_lat_col: gps_lat
+gps_lon_col: gps_lon
+loading:
+  train:
+    batch_size: 2
+    num_workers: 4
+  val:
+    batch_size: 2
+    num_workers: 4
+  test:
+    batch_size: 1
+    num_workers: 0
+num_classes:
+  areas: 7
+  ways: 10
+  nodes: 33
+pixel_per_meter: 2
+crop_size_meters: 64
+max_init_error: 0
+init_from_gps: true
+add_map_mask: true
+mask_radius: 64
+resize_image: 512
+pad_to_square: true
+rectify_pitch: true
+augmentation:
+  rot90: false
+  flip: false
+  image:
+    apply: false

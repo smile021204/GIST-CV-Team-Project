@@ -96,12 +96,16 @@ class Demo:
         self,
         experiment_or_path: Optional[str] = "OrienterNet_MGL",
         device=None,
-        **kwargs
+        **kwargs,
     ):
         if experiment_or_path in pretrained_models:
             experiment_or_path, _ = pretrained_models[experiment_or_path]
         path = resolve_checkpoint_path(experiment_or_path)
-        ckpt = torch.load(path, map_location=(lambda storage, loc: storage))
+        ckpt = torch.load(
+            path,
+            map_location=(lambda storage, loc: storage),
+            weights_only=False,
+        )
         config = ckpt["hyper_parameters"]
         config.model.update(kwargs)
         config.model.image_encoder.backbone.pretrained = False
