@@ -83,13 +83,13 @@ Python 3.9
 
 This code was tested with Python 3.9.23 in the `cv_proj` conda environment.
 
-Use the project conda environment if it already exists:
+Create the project conda environment:
 
 ```bash
-conda activate cv_proj
+conda create -n cv_proj python=3.9
 ```
 
-If dependencies need to be installed:
+Download the project dependencies:
 
 ```bash
 python -m pip install --upgrade pip
