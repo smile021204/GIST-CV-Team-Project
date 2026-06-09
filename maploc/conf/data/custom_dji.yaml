@@ -1,0 +1,34 @@
+name: custom_dji
+data_dir: datasets/datasets_full
+image_dirname: images
+poses_filename: poses.txt
+intrinsics_filename: intrinsics.json
+splits_filename: splits_balanced.json
+tiles_filename: tiles.pkl
+loading:
+  train:
+    batch_size: 1
+    num_workers: 2
+  val:
+    batch_size: 1
+    num_workers: 2
+  test:
+    batch_size: 1
+    num_workers: 0
+# map data
+num_classes:
+  areas: 7
+  ways: 10
+  nodes: 33
+pixel_per_meter: 2
+crop_size_meters: 64
+max_init_error: 16
+add_map_mask: true
+# preprocessing -- match the fine-tune checkpoint training config
+resize_image: 512
+pad_to_square: true
+rectify_pitch: false
+augmentation:
+  rot90: false
+  flip: false
+  image: {apply: false}

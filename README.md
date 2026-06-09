@@ -305,13 +305,11 @@ The route avoids OSM building and water cells and prefers path / road / parking 
 
 ## 8. Sequential Localization (Optional)
 
-Sequential localization aggregates pose predictions across consecutive frames for smoother trajectories. It is implemented on a separate branch and can be run optionally with the commands below.
+Sequential localization aggregates pose predictions across consecutive frames for accurate poses. It runs via the custom_dji data module, reading datasets/datasets_full/ (images/, poses.txt, intrinsics.json, tiles.pkl, splits_balanced.json).
 
-```bash
-git checkout seq/HJ
-```
+Run sequential visualization on the **zero-shot** model (MGL).
 
-Run sequential visualization on the **zero-shot** model (MGL):
+'--experiment OrienterNet_MGL' auto-downloads 'orienternet_mgl.ckpt' on first use:
 
 ```bash
 python -m scripts.visualize_sequential \
@@ -326,14 +324,16 @@ Run sequential visualization on the **fine-tuned** model:
 
 ```bash
 python -m scripts.visualize_sequential \
-  --experiment datasets/gist_abc/checkpoints/finetune_v1.ckpt \
+  --experiment checkpoints/teacher/checkpoint-epoch=12.ckpt \
   --split test --stride 1 \
   --crop_size_meters 256 \
   --fixed_search \
   --output outputs/viz_seq/finetune_fixed_256.pdf
 ```
 
-Sequential mode is **not used to produce the main quantitative results** in our report — it serves as an optional visualization for smoother pose trajectories.
+Sequential mode is not used in our pipeline, but it serves as an optional implementation for accurate pose.
+
+with '--fixed_search', every frame uses one search area.
 
 ---
 
