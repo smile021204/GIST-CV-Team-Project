@@ -82,6 +82,13 @@ Datasets and checkpoints are **not included in the code zip**. Download from Goo
 | GIST drone dataset | [📁 dataset](https://drive.google.com/drive/folders/14hUNPoCRi6Ds2jaUAEEued9OcLpkBUVD) | `datasets/` (see tree below) |
 | Checkpoints (zeroshot, teacher, softkd) | [📁 checkpoints](https://drive.google.com/drive/folders/15GSNhh-Hpazm3ZIQmghaPYAP8Mm9UlBG?usp=sharing) | `checkpoints/` |
 
+The file `datasets/datasets_full.tar.gz` is a compressed archive of the image folder `datasets_full/`.
+After downloading it, extract the archive inside the `datasets/` directory:
+
+```bash
+tar -xzf datasets/datasets_full.tar.gz -C datasets/
+```
+
 After downloading, the layout should look like:
 
 ```
