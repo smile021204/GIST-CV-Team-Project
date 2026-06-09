@@ -1,109 +1,205 @@
 # GIST-CV-Team-Project
 
-This project is based on **OrienterNet**.
+**Adapting OrienterNet to Academic Campuses via Fine-tuning and Knowledge Distillation**
+AI5302 Computer Vision — Final Project, 2026 Spring · Team 21
+Gyuheon Kim · Hyeonji Shin · Minsoo Kang
 
-Original repository:
-https://github.com/facebookresearch/OrienterNet
+This project builds on **OrienterNet** (Sarlin et al., CVPR 2023).
+Original repository: https://github.com/facebookresearch/OrienterNet
+
+---
 
 ## 1. Project Goal
 
-This project fine-tunes OrienterNet for image-based localization on a GIST campus-scale dataset. Given a query image, the model predicts:
+We adapt OrienterNet to GIST campus-scale visual localization through two contributions:
 
-* camera location on a 2D map
-* viewing direction, yaw
+1. **Fine-tuning** the pretrained OrienterNet on a custom drone-captured GIST dataset.
+2. **Knowledge Distillation** of the fine-tuned teacher into a lightweight ResNet-18/FPN student (Soft KD).
 
-The main target scenario is localization around visually similar GIST campus buildings. The model estimates the camera pose ((x, y, yaw)) by matching an image-derived Bird’s-Eye View representation with a 2D public map.
+Given a query image and rough GPS prior, the model predicts:
 
-This can also be used for facility repair guidance. For example, when a user reports a repair spot with a photo, the predicted pose anchors the reported location on the map. A worker can then take another photo nearby, localize their current pose, and receive a map-based route to the estimated repair spot.
+- Camera position `(x, y)` on a 2D OpenStreetMap
+- Viewing direction `yaw`
 
-## 2. Repository Layout
+The main scenario is localization around visually similar GIST campus buildings.
+This can also be used for **facility repair guidance**: a user reports a repair spot with a photo, a worker takes a current photo nearby, and the system localizes both poses and produces an OSM-routed path to the repair anchor.
 
-Keep the following repository-relative paths:
+---
 
-```text
-maploc/                         # model, data module, training code
-scripts/                        # evaluation, demo, and KD utility scripts
-requirements/                   # dependency lists
-configs/                         # composed evaluation and training configs
-MODEL_TEST_COMMANDS.txt          # extra command examples
-SUBMISSION_README.md             # submission file manifest
+## 2. Pipeline Overview
+
+```
+        ┌──────────────────────────────────┐
+        │  Pretrained OrienterNet (MGL)    │
+        │  →  "zeroshot" checkpoint        │ ──► §5.1 eval CSV ──┐
+        └──────────────┬───────────────────┘                     │
+                       │ fine-tune on GIST  (§6.1)               │
+                       ▼                                         │
+        ┌──────────────────────────────────┐                     │
+        │  Fine-tuned OrienterNet          │                     │
+        │  →  "teacher" checkpoint         │ ──► §5.2 eval CSV ──┤
+        └──────────────┬───────────────────┘                     │
+                       │ distillation  (§6.3 → §6.4)             │
+                       ▼                                         │
+        ┌──────────────────────────────────┐                     │
+        │  LightEncoder + Soft KD Student  │                     │
+        │  →  "softkd" checkpoint          │ ──► §5.3 eval CSV ──┤
+        └──────────────────────────────────┘                     │
+                                                                 ▼
+                                  ┌──────────────────────────────────┐
+                                  │  Navigation Demo (§7)            │
+                                  │  • report + worker image pair    │
+                                  │  • OSM-based optimal route       │
+                                  └──────────────────────────────────┘
 ```
 
-Dataset and checkpoint files are not included in the code submission package. Place them separately under the following paths.
+For reproduction, use §5 (Quick Start). For re-training from scratch, use §6.
 
-```text
-datasets/
-  dataset/
-    datasets_full/
-      A/
-      B/
-      C/
-      metadata_full.csv
-      splits_balanced.json
-      tiles.pkl
-      intrinsics.json
+The Navigation Demo (§7) is a downstream use of the evaluation CSV.
+
+Sequential mode (§8) is an optional inference mode for the zero-shot and fine-tuned models.
+
+---
+
+## 3. Repository Layout & External Downloads
+
+This code repository:
+
+```
+maploc/                  # model, data module, training code
+scripts/                 # eval, demo, KD utilities
+configs/                 # eval / training configs
+requirements/            # dependency lists
+MODEL_TEST_COMMANDS.txt  # extra command examples
+SUBMISSION_README.md     # submission file manifest
+README.md                # this file
+```
+
+Datasets and checkpoints are **not included in the code zip**. Download from Google Drive:
+
+| Item | Drive folder | Local target path |
+|---|---|---|
+| GIST drone dataset | [📁 dataset](https://drive.google.com/drive/folders/14hUNPoCRi6Ds2jaUAEEued9OcLpkBUVD) | `datasets/` (see tree below) |
+| Checkpoints (zeroshot, teacher, softkd) | [📁 checkpoints](https://drive.google.com/drive/folders/15GSNhh-Hpazm3ZIQmghaPYAP8Mm9UlBG?usp=sharing) | `checkpoints/` |
+
+After downloading, the layout should look like:
+
+```
+datasets/                       # = config `data_dir`
+  ├── metadata_full.csv         # config `metadata`  → datasets/metadata_full.csv
+  ├── splits_balanced.json      # config `split`     → datasets/splits_balanced.json
+  ├── tiles.pkl                 # config `tiles`     → datasets/tiles.pkl
+  ├── intrinsics.json           # config `intrinsics`→ datasets/intrinsics.json
+  └── datasets_full/            # config `image_root` (images only, searched recursively)
+        └── A/, B/, C/          # per-building drone sequences (flat images/ also works)
 
 checkpoints/
-  teacher/
-    checkpoint-epoch=12.ckpt
-  softkd/
-    checkpoint-epoch=76.ckpt
-  zeroshot/
-    orienternet_mgl.ckpt
+  ├── zeroshot/orienternet_mgl.ckpt        # original MGL pretrained (no fine-tuning)
+  ├── teacher/checkpoint-epoch=12.ckpt     # fine-tuned full OrienterNet (= KD teacher)
+  └── softkd/checkpoint-epoch=76.ckpt      # LightEncoder + Soft KD student
 ```
 
-All checkpoints can be downloaded from the folling link:
+> **Note**: the `teacher/` checkpoint **is** the fine-tuned model. It serves both as the §5.2 fine-tuned result and as the KD teacher in §6.
 
-https://drive.google.com/drive/folders/15GSNhh-Hpazm3ZIQmghaPYAP8Mm9UlBG?usp=sharing
+For **Soft KD re-training only** (§6.4), teacher score volumes are also required:
 
-All data related files can be downloaded from the following link:
-
-https://drive.google.com/drive/folders/14hUNPoCRi6Ds2jaUAEEued9OcLpkBUVD?usp=sharing
-
-For Soft KD retraining, also provide teacher score volumes:
-
-```text
+```
 outputs/teacher_scores/orienternet_gist/
+  ├── train/*.pt
+  └── val/*.pt
 ```
 
-Expected teacher score volume layout:
+These can be regenerated from the teacher checkpoint via §6.3.
 
-```text
-outputs/teacher_scores/orienternet_gist/train/*.pt
-outputs/teacher_scores/orienternet_gist/val/*.pt
-```
+---
 
-## 3. Environment Setup
+## 4. Environment Setup
 
-Recommended Python version:
-
-```text
-Python 3.9
-```
-
-This code was tested with Python 3.9.23 in the `cv_proj` conda environment.
-
-Create the project conda environment:
+Tested with Python 3.9.23. Recommended setup with conda:
 
 ```bash
-conda create -n cv_proj python=3.9
-```
-
-Download the project dependencies:
-
-```bash
-python -m pip install --upgrade pip
-pip install -r requirements/full.txt
+conda create -n cv_proj python=3.10 -y
+conda activate cv_proj
+pip install torch==2.1.0 torchvision==0.16.0
 pip install -e .
+pip install -r requirements/full.txt
 ```
 
-`pip install -e .` installs this repository in editable mode so that the `maploc` package and command-line modules can be imported from the source tree.
+All commands below assume:
 
-All commands below should be run from the repository root.
+- Conda environment `cv_proj` is active
+- Current working directory is the repository root
 
-## 4. Fine-Tune Full OrienterNet Teacher
+---
 
-This command fine-tunes the full OrienterNet model on the GIST dataset.
+## 5. Quick Start — Reproduce Reported Numbers
+
+The fastest path: evaluate the three submitted checkpoints on the GIST test split. **No training required.**
+
+### 5.1 Zero-shot Baseline
+
+```bash
+python scripts/evaluate.py \
+  --experiment checkpoints/zeroshot \
+  --checkpoint checkpoints/zeroshot/orienternet_mgl.ckpt \
+  --config configs/full_orienternet_gist_eval.yaml \
+  --split test --device cuda \
+  --out outputs/zeroshot_test_eval.csv
+```
+
+### 5.2 Fine-tuned Full OrienterNet (Teacher)
+
+```bash
+python scripts/evaluate.py \
+  --experiment checkpoints/teacher \
+  --checkpoint checkpoints/teacher/checkpoint-epoch=12.ckpt \
+  --config configs/full_orienternet_gist_eval.yaml \
+  --split test --device cuda \
+  --out outputs/teacher_test_eval.csv
+```
+
+### 5.3 LightEncoder + Soft KD (Student)
+
+```bash
+python scripts/evaluate.py \
+  --experiment checkpoints/softkd \
+  --checkpoint checkpoints/softkd/checkpoint-epoch=76.ckpt \
+  --config configs/lightencoder_kd_eval.yaml \
+  --split test --device cuda \
+  --out outputs/softkd_test_eval.csv
+```
+
+### 5.4 Summarize Metrics
+
+```bash
+for name in zeroshot teacher softkd; do
+  python scripts/report.py \
+    --predictions outputs/${name}_test_eval.csv \
+    --out outputs/${name}_test_metrics.json \
+    --recall-thresholds 2,5,10,16,20
+done
+```
+
+Each `*_test_eval.csv` contains per-image fields:
+`pred_latitude`, `pred_longitude`, `pred_yaw_max_deg`, `xy_max_error_m`, `yaw_max_error_deg`.
+The aggregated `*_test_metrics.json` matches the table reported in our presentation slides.
+
+---
+
+## 6. Full Training Pipeline (Optional)
+
+To re-train from scratch instead of using the provided checkpoints, follow the steps below. Each step requires the previous step's output.
+
+| Step | Stage | Input | Output | Time |
+|---|---|---|---|---|
+| 6.1 | Fine-tune Teacher | `zeroshot/orienternet_mgl.ckpt` + GIST train+val | `teacher/checkpoint-epoch=XX.ckpt` | ~3 hr |
+| 6.2 | Train LightEncoder baseline *(optional)* | GIST train+val | LightEncoder ckpt | ~3 hr |
+| 6.3 | Generate teacher score volumes | `teacher/checkpoint-epoch=12.ckpt` + GIST | `outputs/teacher_scores/...` | ~30 min |
+| 6.4 | Train LightEncoder + Soft KD | Teacher scores + GIST train+val | `softkd/checkpoint-epoch=XX.ckpt` | ~3 hr |
+
+*Approximate times measured on 1× 32 GB GPU, batch size 8.*
+
+### 6.1 Fine-tune Full OrienterNet (Teacher)
 
 ```bash
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True python -m maploc.train \
@@ -114,150 +210,17 @@ PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True python -m maploc.train \
   experiment.name=example_finetune \
   experiment.gpus=1 \
   training.lr=1e-5 \
-  training.finetune_from_checkpoint=/path/to/checkpoint.ckpt \
+  training.finetune_from_checkpoint=checkpoints/zeroshot/orienternet_mgl.ckpt \
   +training.trainer.accumulate_grad_batches=4 \
   +training.trainer.max_epochs=40 \
   training.trainer.max_steps=-1
 ```
 
-The fine-tuned full OrienterNet checkpoint is used as the **Teacher model** for later knowledge distillation.
+The resulting checkpoint serves **both** as the fine-tuned result and as the KD teacher.
 
-## 5. Evaluate Full Fine-Tuned OrienterNet Teacher
+### 6.2 Train LightEncoder Baseline *(optional)*
 
-After training, evaluate a checkpoint on the validation or test split.
-
-Example:
-
-```bash
-python scripts/evaluate_gist_abc_checkpoint.py \
-  --experiment experiments/example_finetune \
-  --checkpoint experiments/example_finetune/checkpoint-epoch=12.ckpt \
-  --split test \
-  --device cuda \
-  --out experiments/example_finetune/eval_test.csv
-```
-
-Alternative evaluation command using the composed config:
-
-```bash
-python scripts/evaluate.py \
-  --experiment checkpoints/teacher \
-  --checkpoint checkpoints/teacher/checkpoint-epoch=12.ckpt \
-  --config configs/full_orienternet_gist_eval.yaml \
-  --split test \
-  --device cuda \
-  --out outputs/full_orienternet_test_eval.csv
-```
-
-The output CSV contains one localized pose per image:
-
-```text
-pred_latitude
-pred_longitude
-pred_yaw_max_deg
-xy_max_error_m
-yaw_max_error_deg
-```
-
-To summarize the generated CSV:
-
-```bash
-python scripts/report.py \
-  --predictions outputs/full_orienternet_test_eval.csv \
-  --out outputs/full_orienternet_test_metrics.json \
-  --recall-thresholds 2,5,10,16,20
-```
-
-## 6. Navigation Demo
-
-The navigation demo does not run localization directly from a checkpoint. It uses an evaluation CSV that was already generated from a checkpoint.
-
-The report image and worker image must be selected from the evaluated split. For example, if `--split test` was used during evaluation, both selected images must be present in the test-set CSV.
-
-Example command:
-
-```bash
-MPLCONFIGDIR=/tmp/matplotlib PYTHONPATH=. .venv/bin/python scripts/demo_repair_guidance.py \
-  --csv experiments/example_finetune/eval_test.csv \
-  --data-dir data_one \
-  --image-dirname dataset \
-  --report-name DJI_20260514133810_0492_V \
-  --worker-name DJI_20260514131623_0069_V \
-  --out-dir outputs/repair_guidance_demo/example_report_0492_worker_0069
-```
-
-Outputs:
-
-```text
-outputs/repair_guidance_demo/example_report_0492_worker_0069/repair_guidance_demo.png
-outputs/repair_guidance_demo/example_report_0492_worker_0069/guidance_summary.txt
-```
-
-In this demo:
-
-* `report-name` is the user-reported repair photo.
-* `worker-name` is the worker's current photo.
-* the estimated repair anchor is placed in front of the report photo using the predicted report pose and yaw.
-* the route avoids OSM building and water cells and prefers path, road, and parking cells.
-
-## 7. Knowledge Distillation Overview
-
-This project also includes a lightweight OrienterNet student trained with knowledge distillation.
-
-The purpose of knowledge distillation is to transfer the localization behavior of the fine-tuned full OrienterNet Teacher into a lighter Student model. The Student is designed to reduce inference cost while preserving localization performance as much as possible.
-
-The general distillation pipeline is:
-
-```text
-Fine-tuned Full OrienterNet Teacher
-        ↓
-Teacher prediction or teacher score volume generation
-        ↓
-Lightweight Student training
-        ↓
-Student evaluation on the same GIST test split
-```
-
-Two student directions are supported:
-
-1. **LightEncoder Student**
-   A lighter OrienterNet variant using a smaller image encoder such as ResNet18/FPN.
-
-2. **Soft KD Student**
-   A lightweight student trained using teacher score volumes from the full fine-tuned OrienterNet Teacher.
-
-## 8. Evaluate LightEncoder + KD Student
-
-This evaluates the submitted lightweight KD checkpoint on the GIST test split.
-
-```bash
-python scripts/evaluate.py \
-  --experiment checkpoints/softkd \
-  --checkpoint checkpoints/softkd/checkpoint-epoch=76.ckpt \
-  --config configs/lightencoder_kd_eval.yaml \
-  --split test \
-  --device cuda \
-  --out outputs/lightencoder_kd_test_eval.csv
-```
-
-Notes:
-
-* Teacher score volumes are not needed for inference/evaluation.
-* `scripts/evaluate.py` disables teacher-score loading by default.
-* The output CSV contains per-image prediction and error values.
-
-To summarize the generated CSV:
-
-```bash
-python scripts/report.py \
-  --predictions outputs/lightencoder_kd_test_eval.csv \
-  --out outputs/lightencoder_kd_test_metrics.json \
-  --recall-thresholds 2,5,10,16,20
-```
-
-## 9. Train LightEncoder Baseline
-
-This trains OrienterNet with a ResNet18/FPN image encoder on the GIST dataset.
+Trains a ResNet-18/FPN OrienterNet directly with NLL only — useful as a non-distilled reference for the student architecture.
 
 ```bash
 python -m maploc.train \
@@ -272,9 +235,7 @@ python -m maploc.train \
   training.trainer.val_check_interval=1.0
 ```
 
-## 10. Generate Teacher Score Volumes
-
-Soft KD training requires teacher score volumes for the train and val splits. Generate them from the fine-tuned full OrienterNet Teacher:
+### 6.3 Generate Teacher Score Volumes (required for §6.4)
 
 ```bash
 python scripts/dump_teacher_volumes.py \
@@ -285,16 +246,7 @@ python scripts/dump_teacher_volumes.py \
   --num-workers 4
 ```
 
-The generated files should be placed at:
-
-```text
-outputs/teacher_scores/orienternet_gist/train/*.pt
-outputs/teacher_scores/orienternet_gist/val/*.pt
-```
-
-## 11. Train LightEncoder + Soft KD
-
-After teacher score volumes are available, train the KD student:
+### 6.4 Train LightEncoder + Soft KD (Student)
 
 ```bash
 python -m maploc.train \
@@ -312,22 +264,83 @@ python -m maploc.train \
   training.trainer.max_epochs=80
 ```
 
-## 12. Sequential Localization
+After training, evaluate the produced checkpoint via §5.3.
 
-Sequential localization can be used as an optional extension when multiple consecutive frames are available. Instead of estimating each image independently, sequential localization can smooth pose predictions across nearby frames and reduce frame-level instability.
+---
 
-This is optional and not required for the main evaluation.
+## 7. Navigation Demo
 
-## 13. Important Notes
+The demo consumes an evaluation CSV (from §5) and renders a routed OSM map.
+**It does not run localization itself** — the report and worker images must already exist in the evaluation CSV.
 
-* Use the same GIST train/val/test split for all comparisons.
-* Use the same image root, metadata, tiles, intrinsics, crop size, and `pixel_per_meter` setting.
-* Do not include checkpoints or datasets in the code submission package.
-* For inference, only the student checkpoint is required.
-* Teacher score volumes are only required for Soft KD retraining.
-* The navigation demo requires an already generated evaluation CSV.
-* For fair comparison, evaluate the full Teacher and lightweight Student on the same test split.
+```bash
+MPLCONFIGDIR=/tmp/matplotlib python scripts/demo_repair_guidance.py \
+  --csv outputs/teacher_test_eval.csv \
+  --data-dir datasets \
+  --image-dirname datasets_full \
+  --report-name DJI_20260514133810_0492_V \
+  --worker-name DJI_20260514131623_0069_V \
+  --out-dir outputs/repair_guidance_demo/example_report_0492_worker_0069
+```
 
-## 14. Declaration of AI Use
+- `--report-name`: filename of the user-reported repair photo
+- `--worker-name`: filename of the worker's current photo
+- Both filenames must appear in the evaluation CSV (i.e., in the same split that was evaluated)
+
+Outputs:
+
+- `repair_guidance_demo.png` — annotated OSM with route
+- `guidance_summary.txt` — text summary
+
+The route avoids OSM building and water cells and prefers path / road / parking cells.
+
+---
+
+## 8. Sequential Localization (Optional)
+
+Sequential localization aggregates pose predictions across consecutive frames for smoother trajectories. It is implemented on a separate branch and can be run optionally with the commands below.
+
+```bash
+git checkout seq/HJ
+```
+
+Run sequential visualization on the **zero-shot** model (MGL):
+
+```bash
+python -m scripts.visualize_sequential \
+  --experiment OrienterNet_MGL \
+  --split test --stride 1 \
+  --crop_size_meters 256 \
+  --fixed_search \
+  --output outputs/viz_seq/mgl_fixed_256.pdf
+```
+
+Run sequential visualization on the **fine-tuned** model:
+
+```bash
+python -m scripts.visualize_sequential \
+  --experiment datasets/gist_abc/checkpoints/finetune_v1.ckpt \
+  --split test --stride 1 \
+  --crop_size_meters 256 \
+  --fixed_search \
+  --output outputs/viz_seq/finetune_fixed_256.pdf
+```
+
+Sequential mode is **not used to produce the main quantitative results** in our report — it serves as an optional visualization for smoother pose trajectories.
+
+---
+
+## 9. Implementation Notes
+
+- Use the same `splits_balanced.json` for all comparisons.
+- Keep `pixel_per_meter`, crop size, intrinsics, and `tiles.pkl` consistent across teacher / student / zero-shot evaluations.
+- For inference, only the student checkpoint is required.
+- Teacher score volumes are only required for re-training Soft KD (§6.4).
+- The navigation demo (§7) requires an already-generated evaluation CSV.
+- For fair comparison, evaluate the teacher and student on the **same test split with the same config**.
+
+---
+
+## 10. Declaration of AI Use
 
 We personally designed the implementation structure, core idea, and methodology, while Codex and Claude were used as coding assistants for script generation.
