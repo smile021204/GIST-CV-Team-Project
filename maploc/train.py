@@ -13,6 +13,7 @@ from pytorch_lightning.utilities import rank_zero_only
 
 from . import EXPERIMENTS_PATH, logger, pl_logger
 from .data import modules as data_modules
+from .evaluation.run import pretrained_models, resolve_checkpoint_path
 from .module import GenericModule
 
 
@@ -103,6 +104,30 @@ def prepare_experiment_dir(experiment_dir, cfg, rank):
     return last_checkpoint_path
 
 
+def resolve_finetune_checkpoint_path(checkpoint):
+    if checkpoint in pretrained_models:
+        checkpoint = pretrained_models[checkpoint][0]
+    return resolve_checkpoint_path(checkpoint)
+
+
+def adapt_config_for_finetune_checkpoint(cfg, checkpoint_path):
+    # The fine-tuning checkpoint already contains encoder weights.
+    cfg.model.image_encoder.backbone.pretrained = False
+    if Path(checkpoint_path).name == "orienternet_mgl.ckpt":
+        cfg.model.map_encoder.unary_prior = True
+
+
+def adapt_trainer_for_data_config(cfg):
+    if cfg.data.name == "gist_abc":
+        interval = cfg.training.trainer.val_check_interval
+        if isinstance(interval, int) and interval > 0:
+            logger.info(
+                "Using epoch-end validation for GIST ABC instead of every %d steps.",
+                interval,
+            )
+            cfg.training.trainer.val_check_interval = 1.0
+
+
 def train(cfg: DictConfig, job_id: Optional[int] = None):
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     torch.set_float32_matmul_precision("medium")
@@ -114,15 +139,18 @@ def train(cfg: DictConfig, job_id: Optional[int] = None):
     if cfg.experiment.gpus in (None, 0):
         logger.warning("Will train on CPU...")
         cfg.experiment.gpus = 0
+        cfg.training.trainer.devices = 1
     elif not torch.cuda.is_available():
         raise ValueError("Requested GPU but no NVIDIA drivers found.")
     pl.seed_everything(cfg.experiment.seed, workers=True)
 
     init_checkpoint_path = cfg.training.get("finetune_from_checkpoint")
     if init_checkpoint_path is not None:
+        init_checkpoint_path = resolve_finetune_checkpoint_path(init_checkpoint_path)
+        adapt_config_for_finetune_checkpoint(cfg, init_checkpoint_path)
         logger.info("Initializing the model from checkpoint %s.", init_checkpoint_path)
         model = GenericModule.load_from_checkpoint(
-            Path(init_checkpoint_path), strict=True, find_best=False, cfg=cfg
+            init_checkpoint_path, strict=True, find_best=False, cfg=cfg
         )
     else:
         model = GenericModule(cfg)
@@ -170,6 +198,7 @@ def train(cfg: DictConfig, job_id: Optional[int] = None):
                     global_batch_size,
                 )
     data = data_modules[cfg.data.get("name", "mapillary")](cfg.data)
+    adapt_trainer_for_data_config(cfg)
 
     logger_args = {"name": cfg.experiment.name, "version": ""}
     try:
@@ -205,13 +234,12 @@ def train(cfg: DictConfig, job_id: Optional[int] = None):
         logger=tb,
         callbacks=callbacks,
         check_val_every_n_epoch=1,
-        accelerator="gpu",
+        accelerator="gpu" if cfg.experiment.gpus > 0 else "cpu",
         num_nodes=1,
         **trainer_kwargs,
         **cfg.training.trainer,
     )
     trainer.fit(model, data, ckpt_path=last_checkpoint_path)
-
 
 @hydra.main(
     config_path=osp.join(osp.dirname(__file__), "conf"), config_name="orienternet"

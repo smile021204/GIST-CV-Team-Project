@@ -16,4 +16,15 @@ def _load_gist(cfg):
     return GISTDataModule(cfg)
 
 
-modules = {"mapillary": _load_mapillary, "kitti": _load_kitti, "gist": _load_gist}
+def _load_gist_abc(cfg):
+    from .gist_abc.dataset import GistABCDataModule
+
+    return GistABCDataModule(cfg)
+
+
+modules = {
+    "mapillary": _load_mapillary,
+    "kitti": _load_kitti,
+    "gist": _load_gist,
+    "gist_abc": _load_gist_abc,
+}
