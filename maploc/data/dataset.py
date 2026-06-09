@@ -260,5 +260,8 @@ class MapLocDataset(torchdata.Dataset):
             canvas.to_uv(canvas.bbox.center)
             + np.array([[-1], [1]]) * (radius + self.cfg.mask_pad) * canvas.ppm
         ).astype(int)
+        height, width = map_mask.shape
+        mask_min = np.maximum(mask_min, 0)
+        mask_max = np.minimum(mask_max, [width, height])
         map_mask[mask_min[1] : mask_max[1], mask_min[0] : mask_max[0]] = True
         return map_mask

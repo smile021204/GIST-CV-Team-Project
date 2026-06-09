@@ -169,12 +169,27 @@ def make_histograms(rows, out):
     }
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))
     for ax, (title, arr) in zip(axes.flat, values.items()):
-        ax.hist(arr, bins=18, color="#3b82f6", alpha=0.78, edgecolor="white")
-        ax.axvline(np.mean(arr), color="#ef4444", lw=2, label=f"mean {np.mean(arr):.2f}")
-        ax.axvline(np.median(arr), color="#111827", lw=2, ls="--", label=f"median {np.median(arr):.2f}")
+        finite = arr[np.isfinite(arr)]
+        if finite.size == 0:
+            ax.text(0.5, 0.5, "No finite values", ha="center", va="center", transform=ax.transAxes)
+        else:
+            ax.hist(finite, bins=18, color="#3b82f6", alpha=0.78, edgecolor="white")
+            ax.axvline(
+                np.mean(finite),
+                color="#ef4444",
+                lw=2,
+                label=f"mean {np.mean(finite):.2f}",
+            )
+            ax.axvline(
+                np.median(finite),
+                color="#111827",
+                lw=2,
+                ls="--",
+                label=f"median {np.median(finite):.2f}",
+            )
+            ax.legend()
         ax.set_title(title)
         ax.grid(alpha=0.25)
-        ax.legend()
     fig.tight_layout()
     fig.savefig(out, dpi=170, bbox_inches="tight")
     plt.close(fig)
@@ -183,10 +198,12 @@ def make_histograms(rows, out):
 def make_recall_curves(rows, out):
     xy = np.array([r["xy_max_error_m"] for r in rows])
     yaw = np.array([r["yaw_max_error_deg"] for r in rows])
+    xy = xy[np.isfinite(xy)]
+    yaw = yaw[np.isfinite(yaw)]
     xy_thr = np.linspace(0, 40, 161)
     yaw_thr = np.linspace(0, 180, 181)
-    xy_rec = np.array([np.mean(xy <= t) for t in xy_thr])
-    yaw_rec = np.array([np.mean(yaw <= t) for t in yaw_thr])
+    xy_rec = np.array([np.mean(xy <= t) for t in xy_thr]) if xy.size else np.zeros_like(xy_thr)
+    yaw_rec = np.array([np.mean(yaw <= t) for t in yaw_thr]) if yaw.size else np.zeros_like(yaw_thr)
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
     axes[0].plot(xy_thr, xy_rec * 100, color="#2563eb", lw=2)
@@ -218,15 +235,23 @@ def make_scatter(rows, out):
     loss = np.array([r["loss_total"] for r in rows])
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.8))
-    sc = axes[0].scatter(xy, yaw, c=pitch, cmap="coolwarm", s=48, ec="white", lw=0.35)
+    mask = np.isfinite(xy) & np.isfinite(yaw) & np.isfinite(pitch)
+    if np.any(mask):
+        sc = axes[0].scatter(xy[mask], yaw[mask], c=pitch[mask], cmap="coolwarm", s=48, ec="white", lw=0.35)
+        cb = fig.colorbar(sc, ax=axes[0], fraction=0.045, pad=0.02)
+        cb.set_label("pitch (deg)")
+    else:
+        axes[0].text(0.5, 0.5, "No finite values", ha="center", va="center", transform=axes[0].transAxes)
     axes[0].set_xlabel("XY max error (m)")
     axes[0].set_ylabel("Yaw max error (deg)")
     axes[0].set_title("XY vs yaw error, colored by pitch")
     axes[0].grid(alpha=0.25)
-    cb = fig.colorbar(sc, ax=axes[0], fraction=0.045, pad=0.02)
-    cb.set_label("pitch (deg)")
 
-    axes[1].scatter(loss, xy, c=yaw, cmap="viridis", s=48, ec="white", lw=0.35)
+    mask = np.isfinite(loss) & np.isfinite(xy) & np.isfinite(yaw)
+    if np.any(mask):
+        axes[1].scatter(loss[mask], xy[mask], c=yaw[mask], cmap="viridis", s=48, ec="white", lw=0.35)
+    else:
+        axes[1].text(0.5, 0.5, "No finite values", ha="center", va="center", transform=axes[1].transAxes)
     axes[1].set_xlabel("loss")
     axes[1].set_ylabel("XY max error (m)")
     axes[1].set_title("Loss vs XY error, colored by yaw error")
@@ -327,17 +352,35 @@ def make_good_cases(rows, tm, data_dir, image_dirname, out, top_k):
 def write_summary(rows, out):
     xy = np.array([r["xy_max_error_m"] for r in rows])
     yaw = np.array([r["yaw_max_error_deg"] for r in rows])
+    loss = np.array([r["loss_total"] for r in rows])
+    xy_finite = xy[np.isfinite(xy)]
+    yaw_finite = yaw[np.isfinite(yaw)]
     lines = [
         f"samples: {len(rows)}",
-        f"xy mean/median: {xy.mean():.3f} / {np.median(xy):.3f} m",
-        f"xy p75/p90/max: {np.percentile(xy, 75):.3f} / {np.percentile(xy, 90):.3f} / {xy.max():.3f} m",
-        f"yaw mean/median: {yaw.mean():.3f} / {np.median(yaw):.3f} deg",
-        f"yaw p75/p90/max: {np.percentile(yaw, 75):.3f} / {np.percentile(yaw, 90):.3f} / {yaw.max():.3f} deg",
+        f"nonfinite loss_total: {len(loss) - np.isfinite(loss).sum()}",
+        f"nonfinite xy_max_error_m: {len(xy) - xy_finite.size}",
+        f"nonfinite yaw_max_error_deg: {len(yaw) - yaw_finite.size}",
     ]
+    if xy_finite.size:
+        lines.extend(
+            [
+                f"xy mean/median: {xy_finite.mean():.3f} / {np.median(xy_finite):.3f} m",
+                f"xy p75/p90/max: {np.percentile(xy_finite, 75):.3f} / {np.percentile(xy_finite, 90):.3f} / {xy_finite.max():.3f} m",
+            ]
+        )
+    if yaw_finite.size:
+        lines.extend(
+            [
+                f"yaw mean/median: {yaw_finite.mean():.3f} / {np.median(yaw_finite):.3f} deg",
+                f"yaw p75/p90/max: {np.percentile(yaw_finite, 75):.3f} / {np.percentile(yaw_finite, 90):.3f} / {yaw_finite.max():.3f} deg",
+            ]
+        )
     for threshold in [2, 5, 10, 16, 20]:
-        lines.append(f"xy_recall_{threshold}m: {np.mean(xy <= threshold):.4f}")
+        recall = np.mean(xy_finite <= threshold) if xy_finite.size else float("nan")
+        lines.append(f"xy_recall_{threshold}m: {recall:.4f}")
     for threshold in [2, 5, 10, 20, 45, 90]:
-        lines.append(f"yaw_recall_{threshold}deg: {np.mean(yaw <= threshold):.4f}")
+        recall = np.mean(yaw_finite <= threshold) if yaw_finite.size else float("nan")
+        lines.append(f"yaw_recall_{threshold}deg: {recall:.4f}")
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 

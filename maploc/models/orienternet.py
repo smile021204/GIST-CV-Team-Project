@@ -50,6 +50,7 @@ class OrienterNet(BaseModel):
         "normalize_scores_by_num_valid": True,
         "prior_renorm": True,
         "retrieval_dim": None,
+        "distillation": None,
     }
 
     def _init(self, conf):
